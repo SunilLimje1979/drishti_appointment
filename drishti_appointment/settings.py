@@ -89,7 +89,7 @@ DATABASES = {
         'NAME': 'Drishti_medicify',
         'USER': 'postgres',
         'PASSWORD': 'Medicify@2024',
-        'HOST': '13.233.211.102',
+        'HOST': '15.206.32.93',
         'PORT': '5432',
     }
 }
