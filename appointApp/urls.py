@@ -10,5 +10,6 @@ urlpatterns = [
     path("insert_appointment_data/",insert_appointment_data),
     path('get_patient_by_appointment_id/',get_patient_by_appointment_id),
     path("update_appointment_by_id/",update_appointment_by_id),
-   
+    path('get_upcoming_appointments_by_mobileno/',get_upcoming_appointments_by_mobileno),  
+    path('update_appointment_data/',update_appointment_data), 
 ]

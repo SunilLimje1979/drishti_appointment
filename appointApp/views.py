@@ -318,3 +318,125 @@ def update_appointment_by_id(request):
         response_data['message_data'] = serializer.errors
 
     return Response(response_data, status=status.HTTP_200_OK)
+
+import pytz
+
+@api_view(["POST"])
+def get_upcoming_appointments_by_mobileno(request):
+    response_data = {
+        'message_code': 999,
+        'message_text': 'Error occurred.',
+        'message_data': []
+    }
+
+    try:
+        # Get mobile number from request
+        mobile_number = request.data.get('mobile_number')
+
+        if not mobile_number:
+            response_data['message_text'] = 'Mobile number is required.'
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Get current timestamp in IST (Indian Standard Time)
+        ist = pytz.timezone('Asia/Kolkata')
+        current_timestamp = int(datetime.now(ist).timestamp())
+
+        # Fetch today's and upcoming appointments (excluding past & status 4)
+        upcoming_appointments = Tbldoctorappointments.objects.filter(
+            appointment_mobileno=mobile_number,
+            appointment_datetime__gte=current_timestamp,  # Appointment must be today or later
+            isdeleted=0
+        ).exclude(appointment_status=4)  # Exclude status 4
+        upcoming_appointments = upcoming_appointments.order_by('appointment_datetime')
+
+        if not upcoming_appointments.exists():
+            response_data['message_code'] = 1001
+            response_data['message_text'] = 'No upcoming appointments found.'
+            return Response(response_data, status=status.HTTP_200_OK)
+
+        # Convert epoch time to human-readable format and serialize data
+        serialized_appointments = []
+        for appointment in upcoming_appointments:
+            appointment_time = datetime.fromtimestamp(appointment.appointment_datetime, ist).strftime('%d-%m-%Y %H:%M:%S')
+            appointment_data = TbldoctorappointmentsSerializer(appointment).data
+            appointment_data['appointment_datetime'] = appointment_time  # Convert epoch to human-readable
+            appointment_data['doctor_name']= appointment.doctor_id.doctor_firstname + " "+ appointment.doctor_id.doctor_lastname
+            serialized_appointments.append(appointment_data)
+
+        response_data['message_code'] = 1000
+        response_data['message_text'] = 'Upcoming appointments fetched successfully.'
+        response_data['message_data'] = serialized_appointments
+
+    except Exception as e:
+        response_data['message_text'] = str(e)
+
+    return Response(response_data, status=status.HTTP_200_OK)
+
+@api_view(['POST'])
+@transaction.atomic
+def update_appointment_data(request):
+    response_data = {
+        'message_code': 999,
+        'message_text': 'Error occurred.',
+        'message_data': []
+    }
+
+    try:
+        appointment_id = request.data.get('appointment_id')
+
+        # Validate appointment_id
+        if not appointment_id:
+            response_data['message_code'] = 1001
+            response_data['message_text'] = 'Appointment ID is required.'
+            return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+        # Fetch existing appointment
+        appointment = Tbldoctorappointments.objects.filter(appointment_id=appointment_id, isdeleted=0).first()
+
+        if not appointment:
+            response_data['message_code'] = 1002
+            response_data['message_text'] = 'Appointment not found.'
+            return Response(response_data, status=status.HTTP_404_NOT_FOUND)
+
+        # Update only provided fields
+        data = request.data
+
+        if 'appointment_datetime' in data:
+            try:
+                appointment_datetime = int(datetime.strptime(data['appointment_datetime'], '%Y-%m-%d %H:%M:%S').timestamp())
+                appointment.appointment_datetime = appointment_datetime
+            except ValueError:
+                response_data['message_code'] = 1003
+                response_data['message_text'] = 'Invalid appointment datetime format. Use YYYY-MM-DD HH:MM:SS'
+                return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
+
+        if 'doctor_id' in data:
+            appointment.doctor_id_id = data['doctor_id']
+
+        if 'appointment_name' in data:
+            appointment.appointment_name = data['appointment_name']
+
+        if 'appointment_mobileno' in data:
+            appointment.appointment_mobileno = data['appointment_mobileno']
+
+        if 'appointment_gender' in data:
+            gender_mapping = {'Male': 0, 'Female': 1}
+            appointment.appointment_gender = gender_mapping.get(data['appointment_gender'], appointment.appointment_gender)
+
+        if 'consultation_id' in data:
+            appointment.consultation_id_id = data['consultation_id']
+
+        if 'age' in data:
+            appointment.age = data['age']
+
+        # Save the updated appointment
+        appointment.save()
+
+        response_data['message_code'] = 1000
+        response_data['message_text'] = 'Appointment updated successfully.'
+        response_data['message_data'] = {'appointment_id': str(appointment.appointment_id)}
+
+    except Exception as e:
+        response_data['message_text'] = f'Error: {str(e)}'
+
+    return Response(response_data, status=status.HTTP_200_OK)
